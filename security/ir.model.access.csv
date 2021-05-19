@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_iw_accounting_iw_accounting,iw_accounting.iw_accounting,model_iw_accounting_iw_accounting,base.group_user,1,1,1,1
