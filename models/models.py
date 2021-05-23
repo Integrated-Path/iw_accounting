@@ -9,22 +9,25 @@ from odoo.exceptions import UserError
 class accounting_assets(models.Model):
     _inherit = "account.asset.asset"
 
-    def _compute_board_amount(self, sequence, residual_amount, amount_to_depr, undone_dotation_number, posted_depreciation_line_ids, total_days, depreciation_date, first_depreciation=False, index=0):
+    is_calculate_days = fields.Boolean(string="Calculate Days")
+    
+    def _compute_board_amount(self, sequence, residual_amount, amount_to_depr, undone_dotation_number, posted_depreciation_line_ids, total_days, depreciation_date, spacial_state=False, index=0):
         amount = 0
 
         # last depreciation
         if sequence == undone_dotation_number:
             amount = residual_amount
 
-            # custom
-            amount = amount_to_depr / (undone_dotation_number - len(posted_depreciation_line_ids))
+            # custom line
+            if self.is_calculate_days:
+                amount = amount_to_depr / (undone_dotation_number - len(posted_depreciation_line_ids))
             
         else:
             if self.method == 'linear':
                 amount = amount_to_depr / (undone_dotation_number - len(posted_depreciation_line_ids))
 
                 # custome function
-                if first_depreciation:
+                if self.is_calculate_days and spacial_state == 'first':
                     one_peroid = self.method_period
                     # fetching the start of the first depreciation
                     start_of_first_period = depreciation_date - relativedelta(months=one_peroid)
@@ -33,8 +36,10 @@ class accounting_assets(models.Model):
                         skipped_days = self.date - start_of_first_period
                         registered_days = total_days - skipped_days
                         amount *= registered_days / total_days
-#                         raise UserError( str(amount) )
 
+                if self.is_calculate_days and spacial_state == 'last':
+                    amount = residual_amount
+                    # raise UserError( str(residual_amount) )
                 
                 if self.prorata:
                     amount = amount_to_depr / self.method_number
@@ -50,7 +55,6 @@ class accounting_assets(models.Model):
     
     @api.multi
     def compute_depreciation_board(self):
-#         raise UserError("Stop")
         
         self.ensure_one()
 
@@ -88,9 +92,25 @@ class accounting_assets(models.Model):
             month_day = depreciation_date.day
             undone_dotation_number = self._compute_board_undone_dotation_nb(depreciation_date, total_days)
 
-            for x in range(len(posted_depreciation_line_ids), undone_dotation_number):
+            # custom
+            range_end = undone_dotation_number
+            if self.is_calculate_days:
+                range_end += 1
+
+            lines_range = range(len(posted_depreciation_line_ids), range_end)
+            
+            for x in lines_range:
                 sequence = x + 1
-                amount = self._compute_board_amount(sequence, residual_amount, amount_to_depr, undone_dotation_number, posted_depreciation_line_ids, total_days, depreciation_date, first_depreciation=True if x == 0 else False, index=x)
+
+                # custome
+                if self.is_calculate_days and x == 0:
+                    spacial_state = 'first'
+                elif self.is_calculate_days and x == lines_range[-1]:
+                    spacial_state = 'last'
+                else:
+                    spacial_state = False
+
+                amount = self._compute_board_amount(sequence, residual_amount, amount_to_depr, undone_dotation_number, posted_depreciation_line_ids, total_days, depreciation_date, spacial_state=spacial_state, index=x)
                 amount = self.currency_id.round(amount)
                 if float_is_zero(amount, precision_rounding=self.currency_id.rounding):
                     continue
